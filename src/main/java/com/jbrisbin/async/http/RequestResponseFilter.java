@@ -80,82 +80,89 @@ public class RequestResponseFilter extends BaseFilter {
 
 	@SuppressWarnings({"unchecked"})
 	@Override public NextAction handleWrite(FilterChainContext ctx) throws IOException {
-		Request request = ctx.getMessage();
-		if (null != request) {
-			if (null == request.getRequest()) {
-				// Start this request by sending the headers
-				String urlPath = request.getUrl().getPath();
-				if (null != request.getUrl().getQuery()) {
-					urlPath += "?" + request.getUrl().getQuery();
-				}
-				HttpRequestPacket.Builder rb = HttpRequestPacket.builder()
-						.protocol(Protocol.HTTP_1_1)
-						.uri(urlPath);
-				// Method
-				switch (request.getMethod()) {
-					case HEAD:
-						rb.method(Method.HEAD);
-						request.setComplete(true);
-						break;
-					case GET:
-						rb.method(Method.GET);
-						request.setComplete(true);
-						break;
-					case PUT:
-						rb.method(Method.PUT);
-						break;
-					case POST:
-						rb.method(Method.POST);
-						break;
-					case DELETE:
-						rb.method(Method.DELETE);
-						request.setComplete(true);
-						break;
-				}
-				// Custom headers
-				Map<String, String> headers = request.getHeaders();
-				for (Map.Entry<String, String> hentry : headers.entrySet()) {
-					rb.header(hentry.getKey(), hentry.getValue());
-				}
-				// Content-Type
-				if (null != request.getContentType()) {
-					rb.contentType(request.getContentType());
-				}
-				// Content-Length
-				if (request.isChunked()) {
-					headers.put("Transfer-Encoding", "chunked");
-				} else {
-					rb.contentLength(request.getContentLength());
+		Object o = ctx.getMessage();
+		if (o instanceof Request) {
+			Request request = (Request) o;
+			if (null != request) {
+				if (null == request.getRequest()) {
+					// Start this request by sending the headers
+					String urlPath = request.getUrl().getPath();
+					if (null != request.getUrl().getQuery()) {
+						urlPath += "?" + request.getUrl().getQuery();
+					}
+					HttpRequestPacket.Builder rb = HttpRequestPacket.builder()
+							.protocol(Protocol.HTTP_1_1)
+							.uri(urlPath);
+					// Method
+					switch (request.getMethod()) {
+						case HEAD:
+							rb.method(Method.HEAD);
+							request.setComplete(true);
+							break;
+						case GET:
+							rb.method(Method.GET);
+							request.setComplete(true);
+							break;
+						case PUT:
+							rb.method(Method.PUT);
+							break;
+						case POST:
+							rb.method(Method.POST);
+							break;
+						case DELETE:
+							rb.method(Method.DELETE);
+							request.setComplete(true);
+							break;
+					}
+					// Custom headers
+					Map<String, String> headers = request.getHeaders();
+					for (Map.Entry<String, String> hentry : headers.entrySet()) {
+						rb.header(hentry.getKey(), hentry.getValue());
+					}
+					// Content-Type
+					if (null != request.getContentType()) {
+						rb.contentType(request.getContentType());
+					}
+					// Content-Length
+					if (request.isChunked()) {
+						headers.put("Transfer-Encoding", "chunked");
+					} else {
+						rb.contentLength(request.getContentLength());
+					}
+
+					// Write request
+					HttpRequestPacket requestp = rb.build();
+					if (log.isDebugEnabled())
+						log.debug("Writing " + request.getMethod() + " " + urlPath);
+					pendingRequests.push(request);
+					ctx.write(requestp);
+
+					request.setRequest(requestp);
 				}
 
-				// Write request
-				HttpRequestPacket requestp = rb.build();
-				if (log.isDebugEnabled())
-					log.debug("Writing " + request.getMethod() + " " + urlPath);
-				pendingRequests.push(request);
-				ctx.write(requestp);
+				// Body
+				if (null != request.getBody()) {
+					HttpContent hc = request.getRequest().httpContentBuilder()
+							.content(new ByteBufferWrapper(request.getBody()))
+							.build();
+					if (log.isDebugEnabled())
+						log.debug("Writing content chunk: " + hc);
+					ctx.write(hc);
+					request.setBody(null);
+				}
 
-				request.setRequest(requestp);
+				if (request.isComplete()) {
+					if (log.isDebugEnabled())
+						log.debug("Finishing request: " + request);
+					ctx.write(request.getRequest().httpTrailerBuilder().build());
+				}
+				ctx.setMessage(null);
 			}
 
-			// Body
-			if (null != request.getBody()) {
-				HttpContent hc = request.getRequest().httpContentBuilder()
-						.content(new ByteBufferWrapper(request.getBody()))
-						.build();
-				if (log.isDebugEnabled())
-					log.debug("Writing content chunk: " + hc);
-				ctx.write(hc);
-			}
-
-			if (request.isComplete()) {
-				if (log.isDebugEnabled())
-					log.debug("Finishing request: " + request);
-				ctx.write(request.getRequest().httpTrailerBuilder().build());
-			}
+			return ctx.getStopAction();
+		} else {
+			return ctx.getInvokeAction();
 		}
-
-		return ctx.getStopAction();
 	}
 
 }

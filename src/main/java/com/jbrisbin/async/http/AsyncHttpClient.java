@@ -19,6 +19,7 @@ import org.glassfish.grizzly.filterchain.FilterChain;
 import org.glassfish.grizzly.filterchain.FilterChainBuilder;
 import org.glassfish.grizzly.filterchain.TransportFilter;
 import org.glassfish.grizzly.http.HttpClientFilter;
+import org.glassfish.grizzly.memory.ByteBufferWrapper;
 import org.glassfish.grizzly.nio.transport.TCPNIOTransport;
 import org.glassfish.grizzly.nio.transport.TCPNIOTransportBuilder;
 import org.slf4j.Logger;
@@ -208,8 +209,7 @@ public class AsyncHttpClient {
 		@SuppressWarnings({"unchecked"})
 		@Override public int write(ByteBuffer byteBuffer) throws IOException {
 			int size = byteBuffer.remaining();
-			request.setBody(byteBuffer);
-			getConnection().write(request);
+			getConnection().write(new ByteBufferWrapper(byteBuffer));
 			return size;
 		}
 
